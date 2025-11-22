@@ -11,7 +11,7 @@ contract SavingCircle {
     mapping(address => address) public addressOwner;
 
     // round numer to user to auction size of user
-    mapping(uint => mapping(address => uint)) roundAuctionSize;
+    mapping(uint => mapping(address => uint)) public roundAuctionSize;
 
     IERC20 immutable public installmentToken;
     IERC20 immutable public protocolToken;
@@ -33,7 +33,8 @@ contract SavingCircle {
         uint _numRounds,
         uint _startTime,
         uint _timePerRound,
-        uint _numUsers)
+        uint _numUsers
+    )
     {
         installmentToken = IERC20(_installmentToken);
         protocolToken = IERC20(_protocolToken);
@@ -43,6 +44,8 @@ contract SavingCircle {
         startTime = _startTime;
         timePerRound = _timePerRound;
         numUsers = _numUsers;
+
+        require(numUsers == numRounds, "numUsers != numRounds is currently not supported");
     }
 
     event UserRegister(address a);
@@ -66,6 +69,7 @@ contract SavingCircle {
         require(round < numRounds, "round number too high");
         require(roundDeadline(round) >= block.timestamp, "too late to pay");
         require(isCurrent(originalUser), "user is bad");
+        require(numUsers == registeredUsers.length, "not enough registered");
 
         require(installmentToken.transferFrom(msg.sender, address(this), installmentSize), "installment pay failed");
 
