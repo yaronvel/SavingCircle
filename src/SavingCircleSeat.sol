@@ -11,14 +11,11 @@ contract SavingCircleSeat is SavingCircle, ERC721URIStorage {
     mapping(address => uint256) public seatTokenId;
     mapping(uint256 => address) public originalUserOfToken;
 
-    error NotAuthorized(address operator, uint256 tokenId);
     error RecipientNotAccepted(uint256 tokenId, address expected);
-    error DirectTransferNotAllowed();
     error UnknownSeat(uint256 tokenId);
 
     event SeatMinted(uint256 indexed tokenId, address indexed to);
     event TransferAccepted(uint256 indexed tokenId, address indexed by);
-    event TransferExecuted(uint256 indexed tokenId, address indexed from, address indexed to);
 
     // Deploys the saving circle and wires in ERC721 metadata for the seat token.
     constructor(
@@ -67,31 +64,13 @@ contract SavingCircleSeat is SavingCircle, ERC721URIStorage {
         emit TransferAccepted(tokenId, msg.sender);
     }
 
-    // Owner (or approved operator) executes the transfer after acceptance is recorded.
-    function executeTransfer(uint256 tokenId, address to) external {
-        _requireAuthorized(msg.sender, tokenId);
-        if (_acceptedRecipient[tokenId] != to) revert RecipientNotAccepted(tokenId, _acceptedRecipient[tokenId]);
-
-        delete _acceptedRecipient[tokenId];
-        address from = ownerOf(tokenId);
-        _transfer(from, to, tokenId);
-        emit TransferExecuted(tokenId, from, to);
-    }
-
-    // Exposes who has accepted the transfer for UI/off-chain use.
-    function acceptedRecipient(uint256 tokenId) external view returns (address) {
-        return _acceptedRecipient[tokenId];
-    }
-
-    // Reverts unless operator is owner or has appropriate ERC721 approvals.
-    function _requireAuthorized(address operator, uint256 tokenId) internal view {
-        address owner = ownerOf(tokenId);
-        if (!_isAuthorized(owner, operator, tokenId)) revert NotAuthorized(operator, tokenId);
-    }
-
-    // Blocks direct ERC721 transfers and keeps SavingCircle ownership mirrored.
+    // Intercepts every ERC721 state change to enforce acceptance for user-initiated transfers.
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
-        if (auth != address(0)) revert DirectTransferNotAllowed();
+        if (auth != address(0)) {
+            _requireAcceptedRecipient(tokenId, to);
+            delete _acceptedRecipient[tokenId];
+        }
+
         address from = super._update(to, tokenId, auth);
         _syncSeatOwnership(tokenId, from, to);
         return from;
@@ -109,5 +88,9 @@ contract SavingCircleSeat is SavingCircle, ERC721URIStorage {
         }
 
         addressOwner[original] = to;
+    }
+
+    function _requireAcceptedRecipient(uint256 tokenId, address to) internal view {
+        if (_acceptedRecipient[tokenId] != to) revert RecipientNotAccepted(tokenId, _acceptedRecipient[tokenId]);
     }
 }
