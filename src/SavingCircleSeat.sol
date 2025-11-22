@@ -3,10 +3,7 @@
 pragma solidity ^0.8.23;
 
 import {ERC721URIStorage, ERC721} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-
-interface ISavingCircle {
-    function updateAddressOwner(uint256 tokenId, address from, address to) external;
-}
+import {ISavingCircle} from "./ISavingCircle.sol";
 
 contract SavingCircleSeat is ERC721URIStorage {
     uint256 private _nextTokenId;

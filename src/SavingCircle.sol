@@ -2,7 +2,8 @@
 pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SavingCircleSeat, ISavingCircle} from "./SavingCircleSeat.sol";
+import {ISavingCircle} from "./ISavingCircle.sol";
+import {SavingCircleSeat} from "./SavingCircleSeat.sol";
 
 contract SavingCircle is ISavingCircle {
     address[] public registeredUsers;
