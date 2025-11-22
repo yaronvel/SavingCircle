@@ -1,0 +1,18 @@
+{
+  "address": "0xB2142387dF95f1E4588D7b3BF9F1b58cF3746Fd9",
+  "factory": "0x2c28AC6AA2F17e8DFa3E2561338c6357EAD53c32",
+  "txHash": "0x2fa9ec45310fb8437e70c2391dca40b26151bf9239762c4b75419a40c81cf83a",
+  "createdAt": "2025-11-22T21:17:03.753Z",
+  "args": {
+    "_installmentToken": "0x61d8485717c7DDa1a1A6723EF511c0814ddDb738",
+    "_protocolToken": "0x400A417fEDEef43Fc5b8be0D8cD6DF687847Ee8D",
+    "_installmentSize": "100",
+    "_protocolTokenRewardPerInstallment": "10",
+    "_numRounds": "3",
+    "_startTime": "1763846247",
+    "_timePerRound": "60",
+    "_numUsers": "3",
+    "_admin": "0xfCF94DD41B2B5d6C887a30273F995d01bacA1A45",
+    "_maxProtocolTokenInAuction": "1000000000"
+  }
+}
