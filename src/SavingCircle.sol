@@ -2,8 +2,9 @@
 pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract SavingCircle {
+contract SavingCircle is Ownable {
     address[] public registeredUsers;
     address[] public usersWhoDidNotWin;
 
@@ -27,6 +28,8 @@ contract SavingCircle {
 
     uint public nextRoundToPay = 0;
 
+    address public raffleOwner = address(0);
+
     constructor(
         address _installmentToken,
         address _protocolToken,
@@ -35,8 +38,9 @@ contract SavingCircle {
         uint _numRounds,
         uint _startTime,
         uint _timePerRound,
-        uint _numUsers
-    )
+        uint _numUsers,
+        address _admin
+    ) Ownable(_admin)
     {
         installmentToken = IERC20(_installmentToken);
         protocolToken = IERC20(_protocolToken);
@@ -50,8 +54,15 @@ contract SavingCircle {
         require(numUsers == numRounds, "numUsers != numRounds is currently not supported");
     }
 
+    event RaffleOwnerSet(address a);
+    function setRaffleOwner(address a) onlyOwner public {
+        raffleOwner = a;
+
+        emit RaffleOwnerSet(a);
+    }
+
     event UserRegister(address a);
-    function register() public {
+    function register() virtual public {
         require(addressOwner[msg.sender] == address(0), "already registered");
         require(registeredUsers.length < numUsers, "circle is full");
         require(startTime > block.timestamp, "too late to join");
@@ -94,7 +105,8 @@ contract SavingCircle {
     }
 
     event RaffleWin(uint round, uint seed, address winner);
-    function raffle(uint round, uint seed) internal {
+    function raffle(uint round, uint seed) public {
+        require(msg.sender == raffleOwner, "not raffle owner");
         require(round == nextRoundToPay, "previous rounds were not settled yet");
         require(roundDeadline(round) <= block.timestamp, "too early to pay the round");
         require(! roundPlayed[round], "round already played");

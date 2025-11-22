@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {SavingCircle} from "../src/SavingCircle.sol";
+import {SavingCircleNft} from "../src/SavingCircleNft.sol";
 
 contract MyToken is ERC20 {
     constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {
@@ -12,25 +12,8 @@ contract MyToken is ERC20 {
     }    
 }
 
-contract MySavingSircle is SavingCircle {
-    constructor(
-        address _installmentToken,
-        address _protocolToken,
-        uint _installmentSize,
-        uint _protocolTokenRewardPerInstallment,
-        uint _numRounds,
-        uint _startTime,
-        uint _timePerRound,
-        uint _numUsers
-    ) SavingCircle(_installmentToken, _protocolToken, _installmentSize, _protocolTokenRewardPerInstallment, _numRounds, _startTime, _timePerRound, _numUsers) {} 
-
-    function publicRaffle(uint round, uint seed) public {
-        raffle(round, seed);
-    }
-}
-
 contract SavingCircleTest is Test {
-    MySavingSircle sc;
+    SavingCircleNft sc;
     MyToken usdc;
     MyToken scToken;
 
@@ -45,7 +28,7 @@ contract SavingCircleTest is Test {
         usdc = new MyToken("USDC", "USDC");
         scToken = new MyToken("SC", "SC");
 
-        sc = new MySavingSircle(
+        sc = new SavingCircleNft(
             address(usdc),
             address(scToken),
             100,
@@ -53,7 +36,10 @@ contract SavingCircleTest is Test {
             3,
             block.timestamp + 10,
             666,
-            3);
+            3,
+            address(this));
+
+        sc.setRaffleOwner(address(this));
 
 
         address[5] memory users;
@@ -100,6 +86,22 @@ contract SavingCircleTest is Test {
         assertEq(sc.usersWhoDidNotWin(2), user3, "unexpected user3");                
     }
 
+    function testNft() public {
+        register();
+
+        uint tokenId = uint256(uint160(address(user1)));
+
+        vm.startPrank(owner2);
+        sc.acceptTransfer(tokenId);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        sc.safeTransferFrom(user1, owner2, tokenId);
+        vm.stopPrank();
+
+        assertEq(sc.ownerOf(tokenId), owner2);
+    }
+
     function testSimpleDeposit() public {
         register();
 
@@ -130,7 +132,7 @@ contract SavingCircleTest is Test {
         vm.warp(round0EndTime + 1);
 
         // user 2 is expected to win
-        sc.publicRaffle(0, 8);
+        sc.raffle(0, 8);
 
         assertEq(usdc.balanceOf(user2), 1e24 - 100 + 300, "unexpected usdc balance for winner");
 
@@ -160,7 +162,7 @@ contract SavingCircleTest is Test {
         vm.warp(round1EndTime + 1);
 
         // user 1 is expected to win
-        sc.publicRaffle(1, 8);
+        sc.raffle(1, 8);
 
         assertEq(usdc.balanceOf(user1), 1e24 - 200 + 300, "unexpected usdc balance for winner of round 1");
 
@@ -183,7 +185,7 @@ contract SavingCircleTest is Test {
         vm.warp(round2EndTime + 1);
 
         // user 1 is expected to win
-        sc.publicRaffle(2, 88);
+        sc.raffle(2, 88);
 
         assertEq(usdc.balanceOf(user3), 1e24 - 300 + 300, "unexpected usdc balance for winner of round 1");        
     }    
