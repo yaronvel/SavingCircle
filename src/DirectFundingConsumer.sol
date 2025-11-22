@@ -48,7 +48,7 @@ contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
 
     // For this example, retrieve 2 random values in one request.
     // Cannot exceed VRFV2Wrapper.getConfig().maxNumWords.
-    uint32 public numWords = 2;
+    uint32 public numWords = 1;
 
     // Address LINK - hardcoded for Sepolia
     address public linkAddress = 0x779877A7B0D9E8603169DdbD7836e478b4624789;
