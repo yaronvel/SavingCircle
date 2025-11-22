@@ -3,76 +3,48 @@
 pragma solidity ^0.8.23;
 
 import {ERC721URIStorage, ERC721} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import {ISavingCircle} from "./ISavingCircle.sol";
 
-contract SavingCircleSeat is ERC721URIStorage {
+abstract contract SavingCircleSeat is ERC721URIStorage {
     uint256 private _nextTokenId;
-    mapping(uint256 => address) private _pendingRecipient;
-    ISavingCircle private immutable _savingCircle;
+    mapping(uint256 => address) private _acceptedRecipient;
 
     error NotAuthorized(address operator, uint256 tokenId);
+    error RecipientNotAccepted(uint256 tokenId, address expected);
+    error DirectTransferNotAllowed();
+
+    constructor() ERC721("SavingCircleSeat", "SCST") {}
 
     event SeatMinted(uint256 indexed tokenId, address indexed to);
-    event TransferInitiated(uint256 indexed tokenId, address indexed from, address indexed to);
-    event TransferAccepted(uint256 indexed tokenId, address indexed from, address indexed to);
-    event TransferCancelled(uint256 indexed tokenId, address indexed by);
 
-    error TransferAlreadyPending(uint256 tokenId, address currentPending);
-    error TransferNotPending(uint256 tokenId);
-    error NotPendingRecipient(uint256 tokenId, address expected);
-    error DirectTransferNotAllowed();
-    error Unauthorized();
-    error InvalidSavingCircle();
-
-    modifier onlySavingCircle() {
-        if (msg.sender != address(_savingCircle)) revert Unauthorized();
-        _;
-    }
-
-    constructor(address savingCircle_) ERC721("SavingCircleSeat", "SCST") {
-        if (savingCircle_ == address(0)) revert InvalidSavingCircle();
-        _savingCircle = ISavingCircle(savingCircle_);
-    }
-
-    function mintSeat(address to) external onlySavingCircle returns (uint256 tokenId) {
+    function _mintSeat(address to) internal returns (uint256 tokenId) {
         if (to == address(0)) revert ERC721InvalidReceiver(address(0));
         tokenId = _nextTokenId++;
         _safeMint(to, tokenId);
         emit SeatMinted(tokenId, to);
     }
 
-    function initiateTransfer(uint256 tokenId, address to) external {
-        _requireAuthorized(msg.sender, tokenId);
-        if (to == address(0)) revert ERC721InvalidReceiver(address(0));
-
-        address currentPending = _pendingRecipient[tokenId];
-        if (currentPending != address(0)) revert TransferAlreadyPending(tokenId, currentPending);
-
-        _pendingRecipient[tokenId] = to;
-        emit TransferInitiated(tokenId, ownerOf(tokenId), to);
-    }
-
-    function cancelTransfer(uint256 tokenId) external {
-        _requireAuthorized(msg.sender, tokenId);
-        if (_pendingRecipient[tokenId] == address(0)) revert TransferNotPending(tokenId);
-
-        delete _pendingRecipient[tokenId];
-        emit TransferCancelled(tokenId, msg.sender);
-    }
+    event TransferAccepted(uint256 indexed tokenId, address indexed by);
 
     function acceptTransfer(uint256 tokenId) external {
-        address pending = _pendingRecipient[tokenId];
-        if (pending == address(0)) revert TransferNotPending(tokenId);
-        if (pending != msg.sender) revert NotPendingRecipient(tokenId, pending);
-
-        address from = ownerOf(tokenId);
-        delete _pendingRecipient[tokenId];
-        _transfer(from, msg.sender, tokenId);
-        emit TransferAccepted(tokenId, from, msg.sender);
+        ownerOf(tokenId); // reverts if token does not exist
+        _acceptedRecipient[tokenId] = msg.sender;
+        emit TransferAccepted(tokenId, msg.sender);
     }
 
-    function pendingRecipient(uint256 tokenId) external view returns (address) {
-        return _pendingRecipient[tokenId];
+    event TransferExecuted(uint256 indexed tokenId, address indexed from, address indexed to);
+
+    function executeTransfer(uint256 tokenId, address to) external {
+        _requireAuthorized(msg.sender, tokenId);
+        if (_acceptedRecipient[tokenId] != to) revert RecipientNotAccepted(tokenId, _acceptedRecipient[tokenId]);
+
+        delete _acceptedRecipient[tokenId];
+        address from = ownerOf(tokenId);
+        _transfer(from, to, tokenId);
+        emit TransferExecuted(tokenId, from, to);
+    }
+
+    function acceptedRecipient(uint256 tokenId) external view returns (address) {
+        return _acceptedRecipient[tokenId];
     }
 
     function _requireAuthorized(address operator, uint256 tokenId) internal view {
@@ -83,7 +55,9 @@ contract SavingCircleSeat is ERC721URIStorage {
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         if (auth != address(0)) revert DirectTransferNotAllowed();
         address from = super._update(to, tokenId, auth);
-        _savingCircle.updateAddressOwner(tokenId, from, to);
+        _onSeatTransfer(from, to, tokenId);
         return from;
     }
+
+    function _onSeatTransfer(address from, address to, uint256 tokenId) internal virtual;
 }

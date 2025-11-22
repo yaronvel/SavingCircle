@@ -2,10 +2,9 @@
 pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ISavingCircle} from "./ISavingCircle.sol";
 import {SavingCircleSeat} from "./SavingCircleSeat.sol";
 
-contract SavingCircle is ISavingCircle {
+contract SavingCircle is SavingCircleSeat {
     address[] public registeredUsers;
     address[] public usersWhoDidNotWin;
 
@@ -19,7 +18,6 @@ contract SavingCircle is ISavingCircle {
 
     IERC20 public immutable installmentToken;
     IERC20 public immutable protocolToken;
-    SavingCircleSeat public immutable seatToken;
 
     uint256 public immutable installmentSize;
     uint256 public immutable protocolTokenRewardPerInstallment;
@@ -42,7 +40,7 @@ contract SavingCircle is ISavingCircle {
         uint256 _startTime,
         uint256 _timePerRound,
         uint256 _numUsers
-    ) {
+    ) SavingCircleSeat() {
         installmentToken = IERC20(_installmentToken);
         protocolToken = IERC20(_protocolToken);
         installmentSize = _installmentSize;
@@ -51,7 +49,6 @@ contract SavingCircle is ISavingCircle {
         startTime = _startTime;
         timePerRound = _timePerRound;
         numUsers = _numUsers;
-        seatToken = new SavingCircleSeat(address(this));
     }
 
     event UserRegister(address a);
@@ -61,7 +58,7 @@ contract SavingCircle is ISavingCircle {
         require(registeredUsers.length < numUsers, "circle is full");
         require(startTime > block.timestamp, "too late to join");
 
-        uint256 tokenId = seatToken.mintSeat(msg.sender);
+        uint256 tokenId = _mintSeat(msg.sender);
         seatTokenId[msg.sender] = tokenId;
         registeredUsers.push(msg.sender);
         usersWhoDidNotWin.push(msg.sender);
@@ -142,8 +139,16 @@ contract SavingCircle is ISavingCircle {
         return roundAuctionSize[nextRound() - 1][user] > 0;
     }
 
-    function updateAddressOwner(uint256 tokenId, address from, address to) external override {
-        if (msg.sender != address(seatToken)) revert UnauthorizedSeatCaller();
+    function updateAddressOwner(uint256 tokenId, address from, address to) external {
+        if (msg.sender != address(this)) revert UnauthorizedSeatCaller();
+        _setSeatOwnership(tokenId, from, to);
+    }
+
+    function _onSeatTransfer(address from, address to, uint256 tokenId) internal override {
+        _setSeatOwnership(tokenId, from, to);
+    }
+
+    function _setSeatOwnership(uint256 tokenId, address from, address to) internal {
         require(to != address(0), "invalid new owner");
 
         address original = originalUserOfToken[tokenId];
