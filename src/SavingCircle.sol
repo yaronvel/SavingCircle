@@ -13,6 +13,8 @@ contract SavingCircle {
     // round numer to user to auction size of user
     mapping(uint => mapping(address => uint)) public roundAuctionSize;
 
+    mapping(uint => bool) roundPlayed;
+
     IERC20 immutable public installmentToken;
     IERC20 immutable public protocolToken;
 
@@ -82,19 +84,20 @@ contract SavingCircle {
     }
 
     function roundDeadline(uint round) public view returns(uint) {
-        return startTime + timePerRound * round;
+        return startTime + timePerRound * (round + 1);
     }
 
-    function nextRound() public view returns(uint) {
+    function currRound() public view returns(uint) {
         if(block.timestamp < startTime) return 0;
 
-        return 1 + ((block.timestamp - startTime) / timePerRound);
+        return ((block.timestamp - startTime) / timePerRound);
     }
 
     event RaffleWin(uint round, uint seed, address winner);
     function raffle(uint round, uint seed) internal {
         require(round == nextRoundToPay, "previous rounds were not settled yet");
         require(roundDeadline(round) <= block.timestamp, "too early to pay the round");
+        require(! roundPlayed[round], "round already played");
 
         // select the winner
 
@@ -124,13 +127,17 @@ contract SavingCircle {
         usersWhoDidNotWin[winnerIndex] = usersWhoDidNotWin[usersWhoDidNotWin.length - 1];
         usersWhoDidNotWin.pop();
 
+        roundPlayed[round] = true;
+
+        nextRoundToPay++;
+
         emit RaffleWin(round, seed, winner);        
     }
 
     function isCurrent(address user) public view returns(bool) {
-        if(nextRound() == 0) return true;
+        if(currRound() == 0) return true;
 
-        return roundAuctionSize[nextRound() - 1][user] > 0;        
+        return roundAuctionSize[currRound() - 1][user] > 0;        
     }
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SavingCircle} from "../src/SavingCircle.sol";
@@ -129,9 +130,62 @@ contract SavingCircleTest is Test {
         vm.warp(round0EndTime + 1);
 
         // user 2 is expected to win
-        sc.publicRaffle(0, 17);
+        sc.publicRaffle(0, 8);
 
-        assertEq(usdc.balanceOf(user3), 1e24 - 100 + 300, "unexpected usdc balance for winner");        
+        assertEq(usdc.balanceOf(user2), 1e24 - 100 + 300, "unexpected usdc balance for winner");
+
+        assertEq(sc.usersWhoDidNotWin(0), user1, "unexpected user1");
+        assertEq(sc.usersWhoDidNotWin(1), user3, "unexpected user1");
+
+
+
+        // do deposits
+        vm.startPrank(user1);
+        sc.depositRound(1, 15, user1);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        sc.depositRound(1, 1, user2);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        sc.depositRound(1, 5, user3);
+        vm.stopPrank();
+
+        assertEq(sc.roundAuctionSize(1, user1), 15, "unexpected auction1 size");
+        assertEq(sc.roundAuctionSize(1, user2), 1, "unexpected auction1 size");
+        assertEq(sc.roundAuctionSize(1, user3), 5, "unexpected auction1 size");
+
+        uint round1EndTime = sc.startTime() + 2 * sc.timePerRound();
+        vm.warp(round1EndTime + 1);
+
+        // user 1 is expected to win
+        sc.publicRaffle(1, 8);
+
+        assertEq(usdc.balanceOf(user1), 1e24 - 200 + 300, "unexpected usdc balance for winner of round 1");
+
+        assertEq(sc.usersWhoDidNotWin(0), user3, "unexpected user1");
+
+        // do deposits
+        vm.startPrank(user1);
+        sc.depositRound(2, 1, user1);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        sc.depositRound(2, 1, user2);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        sc.depositRound(2, 1, user3);
+        vm.stopPrank();
+
+        uint round2EndTime = sc.startTime() + 3 * sc.timePerRound();
+        vm.warp(round2EndTime + 1);
+
+        // user 1 is expected to win
+        sc.publicRaffle(2, 88);
+
+        assertEq(usdc.balanceOf(user3), 1e24 - 300 + 300, "unexpected usdc balance for winner of round 1");        
     }    
 
 }
