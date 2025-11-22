@@ -15,7 +15,8 @@ contract SavingCircleFactory {
         uint _startTime,
         uint _timePerRound,
         uint _numUsers,
-        address _admin
+        address _admin,
+        uint _maxProtocolTokenInAuction
     )
         public
         returns(SavingCircleNft)
@@ -29,7 +30,8 @@ contract SavingCircleFactory {
             _startTime,
             _timePerRound,
             _numUsers,
-            _admin            
+            _admin,
+            _maxProtocolTokenInAuction            
         );
 
         emit NewCircle(address(sc));

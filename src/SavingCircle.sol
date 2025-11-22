@@ -30,6 +30,8 @@ contract SavingCircle is Ownable {
 
     address public raffleOwner = address(0);
 
+    uint immutable public maxProtocolTokenInAuction;
+
     constructor(
         address _installmentToken,
         address _protocolToken,
@@ -39,7 +41,8 @@ contract SavingCircle is Ownable {
         uint _startTime,
         uint _timePerRound,
         uint _numUsers,
-        address _admin
+        address _admin,
+        uint _maxProtocolTokenInAuction
     ) Ownable(_admin)
     {
         installmentToken = IERC20(_installmentToken);
@@ -50,6 +53,7 @@ contract SavingCircle is Ownable {
         startTime = _startTime;
         timePerRound = _timePerRound;
         numUsers = _numUsers;
+        maxProtocolTokenInAuction = _maxProtocolTokenInAuction;
 
         require(numUsers == numRounds, "numUsers != numRounds is currently not supported");
     }
@@ -83,6 +87,7 @@ contract SavingCircle is Ownable {
         require(roundDeadline(round) >= block.timestamp, "too late to pay");
         require(isCurrent(originalUser), "user is bad");
         require(numUsers == registeredUsers.length, "not enough registered");
+        require(auctionSize <= maxProtocolTokenInAuction, "auction exceeds max");
 
         require(installmentToken.transferFrom(msg.sender, address(this), installmentSize), "installment pay failed");
 

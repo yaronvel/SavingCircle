@@ -37,7 +37,8 @@ contract SavingCircleTest is Test {
             block.timestamp + 10,
             666,
             3,
-            address(this));
+            address(this),
+            1e6);
 
         sc.setRaffleOwner(address(this));
 

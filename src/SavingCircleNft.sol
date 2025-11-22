@@ -27,7 +27,8 @@ contract SavingCircleNft is SavingCircle, ERC721URIStorage {
         uint256 _startTime,
         uint256 _timePerRound,
         uint256 _numUsers,
-        address _admin
+        address _admin,
+        uint256 _maxProtocolTokenInAuction
     )
         SavingCircle(
             _installmentToken,
@@ -38,7 +39,8 @@ contract SavingCircleNft is SavingCircle, ERC721URIStorage {
             _startTime,
             _timePerRound,
             _numUsers,
-            _admin
+            _admin,
+            _maxProtocolTokenInAuction
         )
         ERC721("SavingCircleSeat", "SCST")
     {}
