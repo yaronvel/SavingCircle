@@ -17,6 +17,7 @@ const ERC20_ABI = [
 ];
 
 const INSTALLMENT_SEED_AMOUNT = 100n; // whole-token amount provided to each participant
+const PROTOCOL_TOKEN_SEED_AMOUNT = 100n; // whole-token amount of protocol token per participant
 
 const ACCOUNT_LABELS = ["account_1", "account_2", "account_3"];
 const circleDeploymentFile = path.join(__dirname, "deployments", "SavingCircle.json");
@@ -96,25 +97,45 @@ const loadWalletForLabel = (label, provider) => {
 };
 
 const seedInstallmentTokens = async ({ label, wallet }, ctx) => {
-    const { deployerWallet, installmentToken, seedAmount, installmentTokenSymbol } = ctx;
+    const { deployerWallet, installmentToken, installmentSeedAmount, installmentTokenSymbol } = ctx;
     console.log(
-        `Funding ${label} (${wallet.address}) with ${INSTALLMENT_SEED_AMOUNT} ${installmentTokenSymbol} (${seedAmount} base units)`
+        `Funding ${label} (${wallet.address}) with ${INSTALLMENT_SEED_AMOUNT} ${installmentTokenSymbol} (${installmentSeedAmount} base units)`
     );
-    const tx = await installmentToken.connect(deployerWallet).transfer(wallet.address, seedAmount);
+    const tx = await installmentToken.connect(deployerWallet).transfer(wallet.address, installmentSeedAmount);
     console.log(`  funding tx: https://sepolia.etherscan.io/tx/${tx.hash}`);
     const receipt = await tx.wait();
     console.log(`  funding confirmed in block ${receipt.blockNumber}`);
 };
 
+const seedProtocolTokens = async ({ label, wallet }, ctx) => {
+    const { deployerWallet, protocolToken, protocolSeedAmount, protocolTokenSymbol } = ctx;
+    console.log(
+        `Funding ${label} (${wallet.address}) with ${PROTOCOL_TOKEN_SEED_AMOUNT} ${protocolTokenSymbol} (${protocolSeedAmount} base units)`
+    );
+    const tx = await protocolToken.connect(deployerWallet).transfer(wallet.address, protocolSeedAmount);
+    console.log(`  protocol funding tx: https://sepolia.etherscan.io/tx/${tx.hash}`);
+    const receipt = await tx.wait();
+    console.log(`  protocol funding confirmed in block ${receipt.blockNumber}`);
+};
+
 const approveInstallmentSpend = async ({ label, wallet }, ctx) => {
-    const { installmentToken, circleAddress, seedAmount, installmentTokenSymbol } = ctx;
+    const { installmentToken, circleAddress, installmentSeedAmount, installmentTokenSymbol } = ctx;
     console.log(
         `Approving SavingCircle (${circleAddress}) to spend ${INSTALLMENT_SEED_AMOUNT} ${installmentTokenSymbol} for ${label}`
     );
-    const tx = await installmentToken.connect(wallet).approve(circleAddress, seedAmount);
+    const tx = await installmentToken.connect(wallet).approve(circleAddress, installmentSeedAmount);
     console.log(`  approve tx: https://sepolia.etherscan.io/tx/${tx.hash}`);
     const receipt = await tx.wait();
     console.log(`  approve confirmed in block ${receipt.blockNumber}`);
+};
+
+const approveProtocolSpend = async ({ label, wallet }, ctx) => {
+    const { protocolToken, circleAddress, protocolTokenSymbol } = ctx;
+    console.log(`Approving SavingCircle (${circleAddress}) to spend unlimited ${protocolTokenSymbol} for ${label}`);
+    const tx = await protocolToken.connect(wallet).approve(circleAddress, ethers.MaxUint256);
+    console.log(`  protocol approve tx: https://sepolia.etherscan.io/tx/${tx.hash}`);
+    const receipt = await tx.wait();
+    console.log(`  protocol approve confirmed in block ${receipt.blockNumber}`);
 };
 
 const registerWithWallet = async ({ label, wallet }, contract) => {
@@ -132,13 +153,18 @@ const main = async () => {
 
     const circle = new ethers.Contract(circleAddress, savingCircleAbi, provider);
     const installmentTokenAddress = await circle.installmentToken();
+    const protocolTokenAddress = await circle.protocolToken();
     const installmentToken = new ethers.Contract(installmentTokenAddress, ERC20_ABI, provider);
+    const protocolToken = new ethers.Contract(protocolTokenAddress, ERC20_ABI, provider);
     const decimals = await installmentToken.decimals().catch(() => 18);
+    const protocolDecimals = await protocolToken.decimals().catch(() => 18);
     const installmentTokenSymbol = await installmentToken.symbol().catch(() => "installment token");
-    const seedAmount = INSTALLMENT_SEED_AMOUNT * 10n ** BigInt(decimals);
+    const protocolTokenSymbol = await protocolToken.symbol().catch(() => "protocol token");
+    const installmentSeedAmount = INSTALLMENT_SEED_AMOUNT * 10n ** BigInt(decimals);
+    const protocolSeedAmount = PROTOCOL_TOKEN_SEED_AMOUNT * 10n ** BigInt(protocolDecimals);
     const deployerWallet = getDeployerWallet(provider);
     console.log(
-        `Using deployer ${await deployerWallet.getAddress()} to fund ${INSTALLMENT_SEED_AMOUNT} ${installmentTokenSymbol} per account`
+        `Using deployer ${await deployerWallet.getAddress()} to fund ${INSTALLMENT_SEED_AMOUNT} ${installmentTokenSymbol} and ${PROTOCOL_TOKEN_SEED_AMOUNT} ${protocolTokenSymbol} per account`
     );
 
     for (const label of ACCOUNT_LABELS) {
@@ -146,14 +172,25 @@ const main = async () => {
         await seedInstallmentTokens(walletInfo, {
             deployerWallet,
             installmentToken,
-            seedAmount,
+            installmentSeedAmount,
             installmentTokenSymbol
+        });
+        await seedProtocolTokens(walletInfo, {
+            deployerWallet,
+            protocolToken,
+            protocolSeedAmount,
+            protocolTokenSymbol
         });
         await approveInstallmentSpend(walletInfo, {
             installmentToken,
             circleAddress,
-            seedAmount,
+            installmentSeedAmount,
             installmentTokenSymbol
+        });
+        await approveProtocolSpend(walletInfo, {
+            protocolToken,
+            circleAddress,
+            protocolTokenSymbol
         });
         await registerWithWallet(walletInfo, circle);
     }

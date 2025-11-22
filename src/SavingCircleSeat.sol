@@ -26,7 +26,9 @@ contract SavingCircleSeat is SavingCircle, ERC721URIStorage {
         uint256 _numRounds,
         uint256 _startTime,
         uint256 _timePerRound,
-        uint256 _numUsers
+        uint256 _numUsers,
+        address _admin,
+        uint256 _maxProtocolTokenInAuction
     )
         SavingCircle(
             _installmentToken,
@@ -36,7 +38,9 @@ contract SavingCircleSeat is SavingCircle, ERC721URIStorage {
             _numRounds,
             _startTime,
             _timePerRound,
-            _numUsers
+            _numUsers,
+            _admin,
+            _maxProtocolTokenInAuction
         )
         ERC721("SavingCircleSeat", "SCST")
     {}

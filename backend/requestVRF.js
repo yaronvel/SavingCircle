@@ -34,7 +34,11 @@ const wrapperAbi = ["function calculateRequestPriceNative(uint32,uint32) view re
 const WRAPPER_ADDRESS = "0x195f15F2d49d693cE265b4fB0fdDbE15b1850Cc1";
 
 const main = async () => {
-    const { ALCHEMY_API_KEY, DEPLOYER_PRIVATE_KEY } = process.env;
+    const { ALCHEMY_API_KEY, DEPLOYER_PRIVATE_KEY, SAVING_CIRCLE_ADDRESS, SAVING_CIRCLE_ROUND } = process.env;
+    if (!SAVING_CIRCLE_ADDRESS) {
+        throw new Error("SAVING_CIRCLE_ADDRESS env var is required");
+    }
+    const round = SAVING_CIRCLE_ROUND ? BigInt(SAVING_CIRCLE_ROUND) : 0n;
     const provider = new ethers.JsonRpcProvider(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`);
     const signer = new ethers.Wallet(DEPLOYER_PRIVATE_KEY, provider);
     const directFundingConsumerAddress = loadDeploymentAddress();
@@ -59,12 +63,14 @@ const main = async () => {
         `Wrapper native fee estimate: ${ethers.formatEther(feeWei)} ETH (gasLimit=${callbackGasLimit}, numWords=${numWords}, gasPrice=${feeOverride.gasPrice ?? 0})`
     );
 
-    const gasEstimate = await directFundingConsumer.requestRandomWords.estimateGas(true);
-    console.log(`requestRandomWords(true) gas estimate: ${gasEstimate}`);
+    const gasEstimate =
+        await directFundingConsumer.requestRandomWords.estimateGas(SAVING_CIRCLE_ADDRESS, round, true);
+    console.log(`requestRandomWords gas estimate: ${gasEstimate}`);
     const gasLimit = gasEstimate * 2n;
     console.log(`Overriding gas limit to ${gasLimit}`);
 
-    const requestTx = await directFundingConsumer.requestRandomWords(true, { gasLimit });
+    const requestTx =
+        await directFundingConsumer.requestRandomWords(SAVING_CIRCLE_ADDRESS, round, true, { gasLimit });
     console.log("requestTx raw:", requestTx);
     console.log(`Request tx submitted: https://sepolia.etherscan.io/tx/${requestTx.hash}`);
     const receipt = await requestTx.wait();

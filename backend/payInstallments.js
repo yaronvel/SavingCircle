@@ -1,4 +1,4 @@
-// Pays a single SavingCircle installment for account_1..account_3 from .env.
+// Pays every SavingCircle installment for account_1..account_3, one round at a time.
 
 const fs = require("fs");
 const path = require("path");
@@ -64,7 +64,7 @@ const getCircleAddress = (overrideAddress) => {
     }
 
     throw new Error(
-        "Provide the SavingCircle address via CLI (node payInstallments.js <round> <address>), SAVING_CIRCLE_ADDRESS env var, or ensure backend/deployments/SavingCircle.json exists."
+        "Provide the SavingCircle address via CLI (node payInstallments.js <address>), SAVING_CIRCLE_ADDRESS env var, or ensure backend/deployments/SavingCircle.json exists."
     );
 };
 
@@ -83,27 +83,6 @@ const loadWalletForLabel = (label, provider) => {
         }
     }
     return { label, wallet };
-};
-
-const parseRoundNumber = (value) => {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 0) {
-        throw new Error(`Round must be a non-negative integer, received "${value}"`);
-    }
-    return parsed;
-};
-
-const resolveRoundNumber = async (circle, cliRound) => {
-    if (cliRound !== undefined) {
-        return parseRoundNumber(cliRound);
-    }
-    const envRound = getEnv("ROUND") ?? getEnv("CIRCLE_ROUND");
-    if (envRound !== undefined) {
-        return parseRoundNumber(envRound);
-    }
-    const currentRound = Number(await circle.currRound());
-    console.log(`ROUND not provided; defaulting to circle.currRound() = ${currentRound}`);
-    return currentRound;
 };
 
 const parseAuctionSize = (value, label) => {
@@ -156,6 +135,30 @@ const ensureAllowance = async (token, wallet, spender, amount, tokenLabel, accou
     await tx.wait();
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const fetchLatestTimestamp = async (provider) => {
+    const block = await provider.getBlock("latest");
+    if (!block) {
+        throw new Error("Unable to fetch latest block from provider.");
+    }
+    return Number(block.timestamp);
+};
+
+const waitForTimestamp = async ({ provider, targetTimestamp, label, pollIntervalSeconds }) => {
+    while (true) {
+        const now = await fetchLatestTimestamp(provider);
+        if (now >= targetTimestamp) {
+            return;
+        }
+        const waitSeconds = Math.min(targetTimestamp - now, pollIntervalSeconds);
+        console.log(
+            `${label}: waiting ${waitSeconds}s (chain ts=${now}, target=${targetTimestamp})`
+        );
+        await sleep(waitSeconds * 1000);
+    }
+};
+
 const payInstallmentForAccount = async ({
     label,
     wallet,
@@ -167,9 +170,27 @@ const payInstallmentForAccount = async ({
     installmentTokenSymbol,
     protocolTokenSymbol,
     installmentSize,
-    auctionSize
+    auctionSize,
+    startTime,
+    timePerRound,
+    provider
 }) => {
-    console.log(`Paying round ${roundNumber} for ${label} (${wallet.address}) with auctionSize=${auctionSize}`);
+    const alreadyPaid = await circle.roundAuctionSize(roundNumber, wallet.address);
+    if (alreadyPaid > 0n) {
+        console.log(`  ${label} already paid round ${roundNumber}, skipping`);
+        return;
+    }
+
+    const roundDeadline = startTime + timePerRound * (roundNumber + 1);
+    const chainNow = await fetchLatestTimestamp(provider);
+    if (chainNow >= roundDeadline) {
+        console.warn(
+            `  Skipping ${label} for round ${roundNumber}: missed deadline (${chainNow} >= ${roundDeadline})`
+        );
+        return;
+    }
+
+    console.log(`  Paying round ${roundNumber} for ${label} (${wallet.address}) with auctionSize=${auctionSize}`);
 
     await ensureSufficientBalance(installmentToken, wallet.address, installmentSize, installmentTokenSymbol, label);
     await ensureSufficientBalance(protocolToken, wallet.address, auctionSize, protocolTokenSymbol, label);
@@ -180,33 +201,45 @@ const payInstallmentForAccount = async ({
     const tx = await circle
         .connect(wallet)
         .depositRound(roundNumber, auctionSize, wallet.address);
-    console.log(`  deposit tx submitted: https://sepolia.etherscan.io/tx/${tx.hash}`);
+    console.log(`    deposit tx submitted: https://sepolia.etherscan.io/tx/${tx.hash}`);
     const receipt = await tx.wait();
-    console.log(`  deposit confirmed in block ${receipt.blockNumber}`);
+    console.log(`    deposit confirmed in block ${receipt.blockNumber}`);
 };
 
 const main = async () => {
     const provider = getRpcProvider();
-    const cliRound = process.argv[2];
-    const cliCircleAddress = process.argv[3];
+    const cliCircleAddress = process.argv[2];
 
     const circleAddress = getCircleAddress(cliCircleAddress);
     console.log(`Using SavingCircle at ${circleAddress}`);
 
     const circle = new ethers.Contract(circleAddress, savingCircleAbi, provider);
 
-    const installmentTokenAddress = await circle.installmentToken();
-    const protocolTokenAddress = await circle.protocolToken();
-    const installmentSize = await circle.installmentSize();
-    const protocolReward = await circle.protocolTokenRewardPerInstallment();
-    const maxAuction = await circle.maxProtocolTokenInAuction();
+    const [
+        installmentTokenAddress,
+        protocolTokenAddress,
+        installmentSize,
+        protocolReward,
+        maxAuction,
+        startTime,
+        timePerRound,
+        numRounds
+    ] = await Promise.all([
+        circle.installmentToken(),
+        circle.protocolToken(),
+        circle.installmentSize(),
+        circle.protocolTokenRewardPerInstallment(),
+        circle.maxProtocolTokenInAuction(),
+        circle.startTime(),
+        circle.timePerRound(),
+        circle.numRounds()
+    ]);
 
     const installmentToken = new ethers.Contract(installmentTokenAddress, ERC20_ABI, provider);
     const protocolToken = new ethers.Contract(protocolTokenAddress, ERC20_ABI, provider);
     const installmentTokenSymbol = await installmentToken.symbol().catch(() => "installment token");
     const protocolTokenSymbol = await protocolToken.symbol().catch(() => "protocol token");
 
-    const roundNumber = await resolveRoundNumber(circle, cliRound);
     const defaultAuctionSize = resolveDefaultAuctionSize(circle, getEnv("AUCTION_SIZE"), protocolReward);
 
     console.log(
@@ -219,28 +252,62 @@ const main = async () => {
         );
     }
 
-    for (const label of ACCOUNT_LABELS) {
+    const startTimeSeconds = Number(startTime);
+    const timePerRoundSeconds = Number(timePerRound);
+    const numRoundsCount = Number(numRounds);
+    const pollIntervalSeconds = Number(getEnv("ROUND_POLL_INTERVAL_SECONDS") ?? 30);
+
+    const accountInfos = ACCOUNT_LABELS.map((label) => {
         const walletInfo = loadWalletForLabel(label, provider);
         const auctionSize = resolveAuctionSizeForLabel(label, defaultAuctionSize);
         if (auctionSize > maxAuction) {
             throw new Error(`${label} auction size ${auctionSize} exceeds maxProtocolTokenInAuction ${maxAuction}`);
         }
-        await payInstallmentForAccount({
+        return {
             label,
             wallet: walletInfo.wallet,
-            circle,
-            circleAddress,
-            roundNumber,
-            installmentToken,
-            protocolToken,
-            installmentTokenSymbol,
-            protocolTokenSymbol,
-            installmentSize,
             auctionSize
+        };
+    });
+
+    console.log(
+        `startTime=${startTimeSeconds}, timePerRound=${timePerRoundSeconds}s, numRounds=${numRoundsCount}, pollInterval=${pollIntervalSeconds}s`
+    );
+
+    for (let round = 0; round < numRoundsCount; round++) {
+        const roundStart = startTimeSeconds + timePerRoundSeconds * round;
+        console.log(`\n=== Round ${round} payments ===`);
+        await waitForTimestamp({
+            provider,
+            targetTimestamp: roundStart,
+            label: `Round ${round}`,
+            pollIntervalSeconds
         });
+
+        const roundTasks = accountInfos.map((info) =>
+            payInstallmentForAccount({
+                label: info.label,
+                wallet: info.wallet,
+                circle,
+                circleAddress,
+                roundNumber: round,
+                installmentToken,
+                protocolToken,
+                installmentTokenSymbol,
+                protocolTokenSymbol,
+                installmentSize,
+                auctionSize: info.auctionSize,
+                startTime: startTimeSeconds,
+                timePerRound: timePerRoundSeconds,
+                provider
+            })
+        );
+        await Promise.all(roundTasks);
+
+        console.log(`Completed round ${round} for all accounts.`);
     }
 
-    console.log("All three accounts paid their installments.");
+    console.log("All rounds completed for all accounts.");
 };
 
 main().catch((error) => {

@@ -20,6 +20,10 @@ import {VRFV2PlusClient} from "@chainlink/contracts@1.5.0/src/v0.8/vrf/dev/libra
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
+interface ISavingCircle {
+    function raffle(uint256 round, uint256 seed) external;
+}
+
 contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
     event RequestSent(uint256 requestId, uint32 numWords);
     event RequestFulfilled(uint256 requestId, uint256[] randomWords, uint256 payment);
@@ -33,6 +37,7 @@ contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
     struct SavingCircleData {
         address savingCircle;
         uint256 round;
+        bool exists;
     }
 
     mapping(uint256 => RequestStatus) public s_requests; /* requestId --> requestStatus */
@@ -64,7 +69,12 @@ contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
 
     constructor() ConfirmedOwner(msg.sender) VRFV2PlusWrapperConsumerBase(wrapperAddress) {}
 
-    function requestRandomWords(bool enableNativePayment) external onlyOwner returns (uint256) {
+    function requestRandomWords(address savingCircle, uint256 round, bool enableNativePayment)
+        external
+        onlyOwner
+        returns (uint256)
+    {
+        require(savingCircle != address(0), "invalid circle");
         bytes memory extraArgs =
             VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: enableNativePayment}));
         uint256 requestId;
@@ -79,7 +89,7 @@ contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
         requestIds.push(requestId);
         lastRequestId = requestId;
         emit RequestSent(requestId, numWords);
-        requestOwner[requestId] = SavingCircleData({savingCircle: msg.sender, round: 0});
+        requestOwner[requestId] = SavingCircleData({savingCircle: savingCircle, round: round, exists: true});
         return requestId;
     }
 
@@ -88,8 +98,11 @@ contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
         s_requests[_requestId].fulfilled = true;
         s_requests[_requestId].randomWords = _randomWords;
         // call the owner's callback function
+        require(_randomWords.length > 0, "no random words");
         SavingCircleData memory ownerData = requestOwner[_requestId];
-        ownerData.callback(_requestId, _randomWords);
+        require(ownerData.exists, "no circle data");
+        requestOwner[_requestId].exists = false;
+        ISavingCircle(ownerData.savingCircle).raffle(ownerData.round, _randomWords[0]);
         emit RequestFulfilled(_requestId, _randomWords, s_requests[_requestId].paid);
     }
 
