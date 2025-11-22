@@ -8,6 +8,14 @@ const { ethers } = require("ethers");
 const SavingCircleFactoryArtifact = require("../out/SavingCircleFactory.sol/SavingCircleFactory.json");
 const { abi: savingCircleFactoryAbi } = SavingCircleFactoryArtifact;
 
+const ERC20_ABI = [
+    "function transfer(address to, uint256 amount) external returns (bool)",
+    "function decimals() external view returns (uint8)",
+    "function symbol() external view returns (string)"
+];
+
+const PROTOCOL_TOKEN_SEED_AMOUNT = 100n; // in whole tokens; scaled by decimals at runtime
+
 const deployedFactoryAddress = "0x2c28AC6AA2F17e8DFa3E2561338c6357EAD53c32";
 const deploymentsDir = path.join(__dirname, "deployments");
 const circleDeploymentFile = path.join(deploymentsDir, "SavingCircle.json");
@@ -23,7 +31,7 @@ const circleDeploymentFile = path.join(deploymentsDir, "SavingCircle.json");
  */
 
 // start time slightly in the future so users can register before it locks
-const startTime = Math.floor(Date.now() / 1000) + 30; // 30s buffer
+const startTime = Math.floor(Date.now() / 1000) + 300; // 30s buffer
 
 const constructorArguments = [
     "0x61d8485717c7DDa1a1A6723EF511c0814ddDb738", // _installmentToken (fake USDC on Sepolia)
@@ -172,6 +180,22 @@ const persistDeployment = async (circleAddress, args, txHash) => {
     console.log(`Deployment info written to ${circleDeploymentFile}`);
 };
 
+const fundCircleProtocolTokens = async ({ circleAddress, protocolTokenAddress, deployer }) => {
+    const protocolToken = new ethers.Contract(protocolTokenAddress, ERC20_ABI, deployer);
+    const decimals = await protocolToken.decimals().catch(() => 18);
+    const symbol = await protocolToken.symbol().catch(() => "protocol token");
+    const multiplier = 10n ** BigInt(decimals);
+    const fundAmount = PROTOCOL_TOKEN_SEED_AMOUNT * multiplier;
+
+    console.log(
+        `Funding circle with ${PROTOCOL_TOKEN_SEED_AMOUNT} ${symbol} (${fundAmount.toString()} base units) from deployer`
+    );
+    const tx = await protocolToken.transfer(circleAddress, fundAmount);
+    console.log(`  funding tx submitted: https://sepolia.etherscan.io/tx/${tx.hash}`);
+    const receipt = await tx.wait();
+    console.log(`  funding confirmed in block ${receipt.blockNumber}`);
+};
+
 const main = async () => {
     const provider = getRpcProvider();
     const deployer = getDeployer(provider);
@@ -205,6 +229,8 @@ const main = async () => {
     }
     console.log(`New SavingCircle deployed at: ${circleAddress}`);
     await persistDeployment(circleAddress, circleArgs, tx.hash);
+    const protocolTokenAddress = circleArgs[1];
+    await fundCircleProtocolTokens({ circleAddress, protocolTokenAddress, deployer });
 };
 
 main().catch((error) => {

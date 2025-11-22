@@ -30,7 +30,13 @@ contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
         uint256[] randomWords;
     }
 
+    struct SavingCircleData {
+        address savingCircle;
+        uint256 round;
+    }
+
     mapping(uint256 => RequestStatus) public s_requests; /* requestId --> requestStatus */
+    mapping(uint256 => SavingCircleData) public requestOwner; /* requestId --> owner */
 
     // past requests Id.
     uint256[] public requestIds;
@@ -73,6 +79,7 @@ contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
         requestIds.push(requestId);
         lastRequestId = requestId;
         emit RequestSent(requestId, numWords);
+        requestOwner[requestId] = SavingCircleData({savingCircle: msg.sender, round: 0});
         return requestId;
     }
 
@@ -80,6 +87,9 @@ contract DirectFundingConsumer is VRFV2PlusWrapperConsumerBase, ConfirmedOwner {
         require(s_requests[_requestId].paid > 0, "request not found");
         s_requests[_requestId].fulfilled = true;
         s_requests[_requestId].randomWords = _randomWords;
+        // call the owner's callback function
+        SavingCircleData memory ownerData = requestOwner[_requestId];
+        ownerData.callback(_requestId, _randomWords);
         emit RequestFulfilled(_requestId, _randomWords, s_requests[_requestId].paid);
     }
 
