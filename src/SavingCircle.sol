@@ -2,8 +2,9 @@
 pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract SavingCircle {
+contract SavingCircle is Ownable {
     address[] public registeredUsers;
     address[] public usersWhoDidNotWin;
 
@@ -11,7 +12,9 @@ contract SavingCircle {
     mapping(address => address) public addressOwner;
 
     // round numer to user to auction size of user
-    mapping(uint256 => mapping(address => uint256)) roundAuctionSize;
+    mapping(uint256 => mapping(address => uint256)) public roundAuctionSize;
+
+    mapping(uint256 => bool) roundPlayed;
 
     IERC20 public immutable installmentToken;
     IERC20 public immutable protocolToken;
@@ -25,6 +28,10 @@ contract SavingCircle {
 
     uint256 public nextRoundToPay = 0;
 
+    address public raffleOwner = address(0);
+
+    uint256 public immutable maxProtocolTokenInAuction;
+
     constructor(
         address _installmentToken,
         address _protocolToken,
@@ -33,8 +40,10 @@ contract SavingCircle {
         uint256 _numRounds,
         uint256 _startTime,
         uint256 _timePerRound,
-        uint256 _numUsers
-    ) {
+        uint256 _numUsers,
+        address _admin,
+        uint256 _maxProtocolTokenInAuction
+    ) Ownable(_admin) {
         installmentToken = IERC20(_installmentToken);
         protocolToken = IERC20(_protocolToken);
         installmentSize = _installmentSize;
@@ -43,6 +52,17 @@ contract SavingCircle {
         startTime = _startTime;
         timePerRound = _timePerRound;
         numUsers = _numUsers;
+        maxProtocolTokenInAuction = _maxProtocolTokenInAuction;
+
+        require(numUsers == numRounds, "numUsers != numRounds is currently not supported");
+    }
+
+    event RaffleOwnerSet(address a);
+
+    function setRaffleOwner(address a) public onlyOwner {
+        raffleOwner = a;
+
+        emit RaffleOwnerSet(a);
     }
 
     event UserRegister(address a);
@@ -68,6 +88,8 @@ contract SavingCircle {
         require(round < numRounds, "round number too high");
         require(roundDeadline(round) >= block.timestamp, "too late to pay");
         require(isCurrent(originalUser), "user is bad");
+        require(numUsers == registeredUsers.length, "not enough registered");
+        require(auctionSize <= maxProtocolTokenInAuction, "auction exceeds max");
 
         require(installmentToken.transferFrom(msg.sender, address(this), installmentSize), "installment pay failed");
 
@@ -80,20 +102,22 @@ contract SavingCircle {
     }
 
     function roundDeadline(uint256 round) public view returns (uint256) {
-        return startTime + timePerRound * round;
+        return startTime + timePerRound * (round + 1);
     }
 
-    function nextRound() public view returns (uint256) {
+    function currRound() public view returns (uint256) {
         if (block.timestamp < startTime) return 0;
 
-        return 1 + ((block.timestamp - startTime) / timePerRound);
+        return ((block.timestamp - startTime) / timePerRound);
     }
 
     event RaffleWin(uint256 round, uint256 seed, address winner);
 
-    function raffle(uint256 round, uint256 seed) internal {
+    function raffle(uint256 round, uint256 seed) public {
+        require(msg.sender == raffleOwner, "not raffle owner");
         require(round == nextRoundToPay, "previous rounds were not settled yet");
         require(roundDeadline(round) <= block.timestamp, "too early to pay the round");
+        require(!roundPlayed[round], "round already played");
 
         // select the winner
 
@@ -123,13 +147,17 @@ contract SavingCircle {
         usersWhoDidNotWin[winnerIndex] = usersWhoDidNotWin[usersWhoDidNotWin.length - 1];
         usersWhoDidNotWin.pop();
 
+        roundPlayed[round] = true;
+
+        nextRoundToPay++;
+
         emit RaffleWin(round, seed, winner);
     }
 
     function isCurrent(address user) public view returns (bool) {
-        if (nextRound() == 0) return true;
+        if (currRound() == 0) return true;
 
-        return roundAuctionSize[nextRound() - 1][user] > 0;
+        return roundAuctionSize[currRound() - 1][user] > 0;
     }
 }
 
