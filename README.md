@@ -12,6 +12,9 @@ Built with **Chainlink VRF** for fair selection and **NFT seats** for liquidity.
 
 Saving together becomes simple, safe, and accessible.
 
+- [Check out the demo](https://savingcircles.vercel.app/)
+
+
 ---
 
 ## 📁 Project Structure
