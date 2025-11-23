@@ -12,39 +12,38 @@ contract SavingCircle is Ownable {
     mapping(address => address) public addressOwner;
 
     // round numer to user to auction size of user
-    mapping(uint => mapping(address => uint)) public roundAuctionSize;
+    mapping(uint256 => mapping(address => uint256)) public roundAuctionSize;
 
-    mapping(uint => bool) roundPlayed;
+    mapping(uint256 => bool) roundPlayed;
 
-    IERC20 immutable public installmentToken;
-    IERC20 immutable public protocolToken;
+    IERC20 public immutable installmentToken;
+    IERC20 public immutable protocolToken;
 
-    uint immutable public installmentSize;
-    uint immutable public protocolTokenRewardPerInstallment;
-    uint immutable public numRounds;
-    uint immutable public startTime;
-    uint immutable public timePerRound;
-    uint immutable public numUsers;
+    uint256 public immutable installmentSize;
+    uint256 public immutable protocolTokenRewardPerInstallment;
+    uint256 public immutable numRounds;
+    uint256 public immutable startTime;
+    uint256 public immutable timePerRound;
+    uint256 public immutable numUsers;
 
-    uint public nextRoundToPay = 0;
+    uint256 public nextRoundToPay = 0;
 
     address public raffleOwner = address(0);
 
-    uint immutable public maxProtocolTokenInAuction;
+    uint256 public immutable maxProtocolTokenInAuction;
 
     constructor(
         address _installmentToken,
         address _protocolToken,
-        uint _installmentSize,
-        uint _protocolTokenRewardPerInstallment,
-        uint _numRounds,
-        uint _startTime,
-        uint _timePerRound,
-        uint _numUsers,
+        uint256 _installmentSize,
+        uint256 _protocolTokenRewardPerInstallment,
+        uint256 _numRounds,
+        uint256 _startTime,
+        uint256 _timePerRound,
+        uint256 _numUsers,
         address _admin,
-        uint _maxProtocolTokenInAuction
-    ) Ownable(_admin)
-    {
+        uint256 _maxProtocolTokenInAuction
+    ) Ownable(_admin) {
         installmentToken = IERC20(_installmentToken);
         protocolToken = IERC20(_protocolToken);
         installmentSize = _installmentSize;
@@ -59,14 +58,16 @@ contract SavingCircle is Ownable {
     }
 
     event RaffleOwnerSet(address a);
-    function setRaffleOwner(address a) onlyOwner public {
+
+    function setRaffleOwner(address a) public onlyOwner {
         raffleOwner = a;
 
         emit RaffleOwnerSet(a);
     }
 
     event UserRegister(address a);
-    function register() virtual public {
+
+    function register() public virtual {
         require(addressOwner[msg.sender] == address(0), "already registered");
         require(registeredUsers.length < numUsers, "circle is full");
         require(startTime > block.timestamp, "too late to join");
@@ -78,8 +79,9 @@ contract SavingCircle is Ownable {
         emit UserRegister(msg.sender);
     }
 
-    event UserDepositRound(uint round, uint auctionSize, address originalUser);
-    function depositRound(uint round, uint auctionSize, address originalUser) public {
+    event UserDepositRound(uint256 round, uint256 auctionSize, address originalUser);
+
+    function depositRound(uint256 round, uint256 auctionSize, address originalUser) public {
         require(addressOwner[originalUser] == msg.sender, "not owner");
         require(roundAuctionSize[round][originalUser] == 0, "already paid");
         require(auctionSize > 0, "auction size 0 not allowed");
@@ -99,43 +101,44 @@ contract SavingCircle is Ownable {
         emit UserDepositRound(round, auctionSize, originalUser);
     }
 
-    function roundDeadline(uint round) public view returns(uint) {
+    function roundDeadline(uint256 round) public view returns (uint256) {
         return startTime + timePerRound * (round + 1);
     }
 
-    function currRound() public view returns(uint) {
-        if(block.timestamp < startTime) return 0;
+    function currRound() public view returns (uint256) {
+        if (block.timestamp < startTime) return 0;
 
         return ((block.timestamp - startTime) / timePerRound);
     }
 
-    event RaffleWin(uint round, uint seed, address winner);
-    function raffle(uint round, uint seed) public {
+    event RaffleWin(uint256 round, uint256 seed, address winner);
+
+    function raffle(uint256 round, uint256 seed) public {
         require(msg.sender == raffleOwner, "not raffle owner");
         require(round == nextRoundToPay, "previous rounds were not settled yet");
         require(roundDeadline(round) <= block.timestamp, "too early to pay the round");
-        require(! roundPlayed[round], "round already played");
+        require(!roundPlayed[round], "round already played");
 
         // select the winner
 
-        uint totalAuctionForRound = 0;
-        for(uint i = 0 ; i < usersWhoDidNotWin.length ; i++) {
+        uint256 totalAuctionForRound = 0;
+        for (uint256 i = 0; i < usersWhoDidNotWin.length; i++) {
             totalAuctionForRound += roundAuctionSize[round][usersWhoDidNotWin[i]];
         }
 
-        uint winThreshold = seed % totalAuctionForRound;
-        uint weightSoFar = 0;
-        uint winnerIndex = 0;
-        for(winnerIndex = 0 ; winnerIndex < usersWhoDidNotWin.length ; winnerIndex++) {
+        uint256 winThreshold = seed % totalAuctionForRound;
+        uint256 weightSoFar = 0;
+        uint256 winnerIndex = 0;
+        for (winnerIndex = 0; winnerIndex < usersWhoDidNotWin.length; winnerIndex++) {
             weightSoFar += roundAuctionSize[round][usersWhoDidNotWin[winnerIndex]];
-            if(weightSoFar >= winThreshold) break;
+            if (weightSoFar >= winThreshold) break;
         }
 
         // pay minimum between balance and installment * num rounds
-        uint rewardSize = installmentSize * numRounds;
-        uint availBalance = installmentToken.balanceOf(address(this));
+        uint256 rewardSize = installmentSize * numRounds;
+        uint256 availBalance = installmentToken.balanceOf(address(this));
 
-        if(availBalance < rewardSize) rewardSize = availBalance;
+        if (availBalance < rewardSize) rewardSize = availBalance;
         address winner = addressOwner[usersWhoDidNotWin[winnerIndex]];
 
         require(installmentToken.transfer(winner, rewardSize), "reward payment failed");
@@ -148,13 +151,13 @@ contract SavingCircle is Ownable {
 
         nextRoundToPay++;
 
-        emit RaffleWin(round, seed, winner);        
+        emit RaffleWin(round, seed, winner);
     }
 
-    function isCurrent(address user) public view returns(bool) {
-        if(currRound() == 0) return true;
+    function isCurrent(address user) public view returns (bool) {
+        if (currRound() == 0) return true;
 
-        return roundAuctionSize[currRound() - 1][user] > 0;        
+        return roundAuctionSize[currRound() - 1][user] > 0;
     }
 }
 
